@@ -30,6 +30,7 @@ export interface PersonSummary {
   };
   latestQuarter: Quarter;
   completeness: 'complete' | 'partial'; // complete if Q1, Q2, Q3, Q4 present
+  quartersCount: number; // total quarters with data (1 to 4)
   // Trends (Latest vs Baseline)
   fatPercentageChange: number | null; // percentage points difference (e.g. -2.5%)
   fatPercentageChangePct: number | null; // relative % change (e.g. -8.2%)
@@ -68,7 +69,7 @@ export interface MetricSummary {
 
 export interface FilterState {
   viewMode: 'organization' | 'individual';
-  selectedQuarter: Quarter;
+  selectedQuarter: Quarter | 'ALL';
   selectedPersonId: string | null;
   searchQuery: string;
   bmiGroupFilter: 'all' | BMIGroup;

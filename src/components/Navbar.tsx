@@ -4,8 +4,8 @@ import { Quarter } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
-  selectedQuarter: Quarter;
-  onSelectQuarter: (q: Quarter) => void;
+  selectedQuarter: Quarter | 'ALL';
+  onSelectQuarter: (q: Quarter | 'ALL') => void;
   onOpenAppsScript: () => void;
   onOpenWireframeGuide: () => void;
   onOpenDataModal: () => void;
@@ -53,6 +53,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2 sm:gap-2.5">
             {/* Quarter Quick Selector */}
             <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+              <button
+                onClick={() => onSelectQuarter('ALL')}
+                className={`px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                  selectedQuarter === 'ALL'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="ภาพรวมครบทุกไตรมาส"
+              >
+                ทุก Q
+              </button>
               {(['Q1', 'Q2', 'Q3', 'Q4'] as Quarter[]).map((q) => (
                 <button
                   key={q}

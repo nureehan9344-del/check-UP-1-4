@@ -99,6 +99,7 @@ export function buildPersonsFromRecords(records: BodyCompositionRecord[]): Perso
     }
 
     const bmiGroup = getBMIGroup(latest.bmi);
+    const quartersCount = Object.keys(entry.quarters).length;
 
     persons.push({
       person_id: entry.person_id,
@@ -108,6 +109,7 @@ export function buildPersonsFromRecords(records: BodyCompositionRecord[]): Perso
       quarters: entry.quarters,
       latestQuarter,
       completeness,
+      quartersCount,
       fatPercentageChange,
       fatPercentageChangePct,
       muscleMassChange,
@@ -290,6 +292,37 @@ export function computeBMIDistributionByQuarter(records: BodyCompositionRecord[]
       total,
     };
   });
+}
+
+export interface OverallBMIDistribution {
+  'ลูกค้ารายย่อย': number;
+  'ลูกค้าทั่วไป': number;
+  'ลูกค้ารายใหญ่': number;
+  'ลูกค้ารายย่อยPct': number;
+  'ลูกค้าทั่วไปPct': number;
+  'ลูกค้ารายใหญ่Pct': number;
+  total: number;
+}
+
+export function computeOverallPersonBMIDistribution(persons: PersonSummary[]): OverallBMIDistribution {
+  let under = 0;
+  let normal = 0;
+  let over = 0;
+  persons.forEach((p) => {
+    if (p.bmiGroup === 'ลูกค้ารายย่อย') under++;
+    else if (p.bmiGroup === 'ลูกค้าทั่วไป') normal++;
+    else over++;
+  });
+  const total = persons.length;
+  return {
+    'ลูกค้ารายย่อย': under,
+    'ลูกค้าทั่วไป': normal,
+    'ลูกค้ารายใหญ่': over,
+    'ลูกค้ารายย่อยPct': total > 0 ? Number(((under / total) * 100).toFixed(1)) : 0,
+    'ลูกค้าทั่วไปPct': total > 0 ? Number(((normal / total) * 100).toFixed(1)) : 0,
+    'ลูกค้ารายใหญ่Pct': total > 0 ? Number(((over / total) * 100).toFixed(1)) : 0,
+    total,
+  };
 }
 
 export interface QuarterParticipationSummary {

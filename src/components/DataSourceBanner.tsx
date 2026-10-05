@@ -101,7 +101,7 @@ export const DataSourceBanner: React.FC<DataSourceBannerProps> = ({
             <button
               onClick={onResetToDefault}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 rounded-lg transition-colors"
-              title="สลับกลับไปใช้ชุดข้อมูลมาตรฐาน (2,721 ท่าน)"
+              title="สลับกลับไปใช้ชุดข้อมูลมาตรฐาน (2,287 ท่าน)"
             >
               <RotateCcw className="w-3 h-3" />
               <span>คืนค่าตั้งต้น</span>

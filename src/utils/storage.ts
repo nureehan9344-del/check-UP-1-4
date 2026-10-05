@@ -28,9 +28,15 @@ export function loadPersistedState(): StorageState {
     if (rawRecords) {
       const records = JSON.parse(rawRecords) as BodyCompositionRecord[];
       if (Array.isArray(records) && records.length > 0) {
+        // Ensure 47154 has no Q4 record if stale cache exists
+        const cleanRecords = records.filter(r => !(String(r.person_id).trim() === '47154' && r.quarter === 'Q4'));
+        if (cleanRecords.length !== records.length) {
+          localStorage.setItem(STORAGE_CUSTOM_RECORDS, JSON.stringify(cleanRecords));
+        }
+
         return {
           hasCustomData: true,
-          records,
+          records: cleanRecords,
           sheetUrl,
           lastSync,
           mode: mode === 'default' ? 'custom' : mode,

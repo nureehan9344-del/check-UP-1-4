@@ -25,6 +25,7 @@ import {
   fetchAllSheetsFromSpreadsheet,
   parseHealthRecordsCsv,
   detectQuarterFromName,
+  parseWorkbookBuffer,
   MultiSheetFetchResult
 } from '../utils/csvParser';
 
@@ -59,6 +60,7 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
   const [loadingProgress, setLoadingProgress] = useState<string>('');
   const [lastFetchResult, setLastFetchResult] = useState<MultiSheetFetchResult | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   if (!isOpen) return null;
 
@@ -117,38 +119,125 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
     }
   };
 
-  // 2. Handle Multiple File Upload (.csv / .tsv / .json)
-  const handleMultipleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  // Process uploaded files (.xlsx, .xls, .csv, .tsv, .txt, .json)
+  const processFiles = (files: File[]) => {
     if (!files || files.length === 0) return;
 
     setIsLoading(true);
-    setStatusMessage({ text: `กำลังอ่านข้อมูล ${files.length} ไฟล์พร้อมกัน...`, type: 'info' });
+    setStatusMessage({ text: `กำลังอ่านข้อมูล ${files.length} ไฟล์พร้อมตรวจสอบชีทและการเข้ารหัส...`, type: 'info' });
 
-    const allUploadedRecords: BodyCompositionRecord[] = [];
     const recordMap = new Map<string, BodyCompositionRecord>();
     let filesProcessed = 0;
+    const fileStats: string[] = [];
 
-    Array.from(files).forEach((file: File) => {
-      const fallbackQuarter = detectQuarterFromName(file.name);
+    Array.from(files).forEach((file: File, fileIndex: number) => {
+      // If filename doesn't have quarter, fallback based on file count & index
+      let fallbackQuarter = detectQuarterFromName(file.name);
+      if (!fallbackQuarter) {
+        if (files.length === 4) {
+          fallbackQuarter = fileIndex === 0 ? 'Q1' : fileIndex === 1 ? 'Q2' : fileIndex === 2 ? 'Q3' : 'Q4';
+        } else if (files.length === 3) {
+          fallbackQuarter = fileIndex === 0 ? 'Q1' : fileIndex === 1 ? 'Q2' : 'Q3';
+        } else if (files.length === 2) {
+          fallbackQuarter = fileIndex === 0 ? 'Q1' : 'Q2';
+        } else {
+          fallbackQuarter = 'Q4';
+        }
+      }
+
       const reader = new FileReader();
 
       reader.onload = (evt) => {
         try {
-          const content = evt.target?.result as string;
-          let parsed: BodyCompositionRecord[] = [];
+          const buffer = evt.target?.result as ArrayBuffer;
+          const fileNameLower = file.name.toLowerCase();
 
-          if (file.name.endsWith('.json')) {
-            const json = JSON.parse(content);
-            parsed = json.records || (Array.isArray(json) ? json : []);
+          if (fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls')) {
+            // Excel Workbook (.xlsx / .xls) with multiple sheets!
+            const parsedWb = parseWorkbookBuffer(buffer, fallbackQuarter);
+            parsedWb.records.forEach((r) => {
+              const key = `${r.person_id}_${r.quarter}`;
+              const existing = recordMap.get(key);
+              if (existing) {
+                recordMap.set(key, {
+                  ...existing,
+                  ...r,
+                  weight: r.weight ?? existing.weight,
+                  height: r.height ?? existing.height,
+                  muscle_mass: r.muscle_mass ?? existing.muscle_mass,
+                  bmi: r.bmi ?? existing.bmi,
+                  body_fat_percentage: r.body_fat_percentage ?? existing.body_fat_percentage,
+                  fat_mass: r.fat_mass ?? existing.fat_mass,
+                  visceral_fat: r.visceral_fat ?? existing.visceral_fat,
+                  department: r.department || existing.department,
+                  gender: r.gender || existing.gender,
+                  age: r.age ?? existing.age,
+                });
+              } else {
+                recordMap.set(key, r);
+              }
+            });
+
+            const sheetsSummary = parsedWb.sheetDetails.map((s) => `${s.name} (${s.rows} แถว)`).join(', ');
+            fileStats.push(`${file.name}: ${parsedWb.records.length} แถว [${sheetsSummary || '1 ชีท'}]`);
+          } else if (fileNameLower.endsWith('.json')) {
+            const text = new TextDecoder('utf-8').decode(buffer);
+            const json = JSON.parse(text);
+            const parsed: BodyCompositionRecord[] = json.records || (Array.isArray(json) ? json : []);
+            parsed.forEach((r) => {
+              const key = `${r.person_id}_${r.quarter}`;
+              const existing = recordMap.get(key);
+              if (existing) {
+                recordMap.set(key, { ...existing, ...r });
+              } else {
+                recordMap.set(key, r);
+              }
+            });
+            fileStats.push(`${file.name}: ${parsed.length} แถว`);
           } else {
-            parsed = parseHealthRecordsCsv(content, fallbackQuarter);
-          }
+            // 1. First attempt: Standard UTF-8
+            const utf8Text = new TextDecoder('utf-8').decode(buffer);
+            const utf8Parsed = parseHealthRecordsCsv(utf8Text, fallbackQuarter);
 
-          parsed.forEach((r) => {
-            const key = `${r.person_id}_${r.quarter}`;
-            recordMap.set(key, r);
-          });
+            // 2. Second attempt: Check if Thai Windows-874/TIS-620 provides better results
+            let win874Parsed: BodyCompositionRecord[] = [];
+            try {
+              const win874Text = new TextDecoder('windows-874').decode(buffer);
+              win874Parsed = parseHealthRecordsCsv(win874Text, fallbackQuarter);
+            } catch {
+              // ignore
+            }
+
+            const parsed = (win874Parsed.length > utf8Parsed.length || (utf8Text.includes('\uFFFD') && win874Parsed.length > 0))
+              ? win874Parsed
+              : utf8Parsed;
+
+            let fileCount = 0;
+            parsed.forEach((r) => {
+              const key = `${r.person_id}_${r.quarter}`;
+              const existing = recordMap.get(key);
+              if (existing) {
+                recordMap.set(key, {
+                  ...existing,
+                  ...r,
+                  weight: r.weight ?? existing.weight,
+                  height: r.height ?? existing.height,
+                  muscle_mass: r.muscle_mass ?? existing.muscle_mass,
+                  bmi: r.bmi ?? existing.bmi,
+                  body_fat_percentage: r.body_fat_percentage ?? existing.body_fat_percentage,
+                  fat_mass: r.fat_mass ?? existing.fat_mass,
+                  visceral_fat: r.visceral_fat ?? existing.visceral_fat,
+                  department: r.department || existing.department,
+                  gender: r.gender || existing.gender,
+                  age: r.age ?? existing.age,
+                });
+              } else {
+                recordMap.set(key, r);
+              }
+              fileCount++;
+            });
+            fileStats.push(`${file.name}: ${fileCount} แถว (${fallbackQuarter})`);
+          }
         } catch (err) {
           console.warn('File parse error:', file.name, err);
         } finally {
@@ -156,7 +245,10 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
           if (filesProcessed === files.length) {
             const finalRecords = Array.from(recordMap.values());
             if (finalRecords.length === 0) {
-              setStatusMessage({ text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ กรุณาตรวจสอบหัวตาราง', type: 'error' });
+              setStatusMessage({
+                text: 'ไม่พบข้อมูลที่ถูกต้องในไฟล์ กรุณาตรวจสอบว่ามีหัวตารางอย่างน้อย person_id หรือ รหัส และค่าน้ำหนัก/ส่วนสูง/BMI',
+                type: 'error',
+              });
               setIsLoading(false);
               return;
             }
@@ -167,16 +259,17 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
             const q2Count = finalRecords.filter((r) => r.quarter === 'Q2').length;
             const q3Count = finalRecords.filter((r) => r.quarter === 'Q3').length;
             const q4Count = finalRecords.filter((r) => r.quarter === 'Q4').length;
+            const uniquePersons = new Set(finalRecords.map((r) => r.person_id)).size;
 
             setStatusMessage({
-              text: `รวมข้อมูลจาก ${files.length} ไฟล์สำเร็จ รวม ${finalRecords.length.toLocaleString()} รายการ (Q1: ${q1Count}, Q2: ${q2Count}, Q3: ${q3Count}, Q4: ${q4Count}) บันทึกเรียบร้อย!`,
+              text: `อ่านข้อมูลจาก ${files.length} ไฟล์ครบทุกชีทสำเร็จ รวม ${finalRecords.length.toLocaleString()} รายการ (บุคลากร ${uniquePersons.toLocaleString()} ท่าน | Q1: ${q1Count.toLocaleString()}, Q2: ${q2Count.toLocaleString()}, Q3: ${q3Count.toLocaleString()}, Q4: ${q4Count.toLocaleString()}) บันทึกเข้าระบบเรียบร้อย`,
               type: 'success',
             });
             setIsLoading(false);
 
             setTimeout(() => {
               onClose();
-            }, 1800);
+            }, 2500);
           }
         }
       };
@@ -188,8 +281,16 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
         }
       };
 
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     });
+  };
+
+  // 2. Handle Multiple File Upload from input
+  const handleMultipleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    processFiles(Array.from(files));
+    e.target.value = ''; // Reset input to allow re-uploading same file
   };
 
   // 3. Handle Pasted CSV
@@ -463,21 +564,39 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
           {/* TAB 2: Multiple File Upload */}
           {activeTab === 'upload_file' && (
             <div className="space-y-4">
-              <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-8 text-center bg-indigo-50/20 hover:bg-indigo-50/40 transition-colors">
-                <Upload className="w-10 h-10 text-indigo-500 mx-auto mb-3" />
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    processFiles(Array.from(e.dataTransfer.files));
+                  }
+                }}
+                className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors ${
+                  isDragging
+                    ? 'border-indigo-600 bg-indigo-100/50 scale-[1.01]'
+                    : 'border-indigo-200 hover:border-indigo-500 bg-indigo-50/20 hover:bg-indigo-50/40'
+                }`}
+              >
+                <Upload className={`w-10 h-10 mx-auto mb-3 transition-colors ${isDragging ? 'text-indigo-700 animate-bounce' : 'text-indigo-500'}`} />
                 <h4 className="font-bold text-sm text-slate-800 mb-1">
-                  เลือกหลายไฟล์พร้อมกัน (Multiple Files: Q1, Q2, Q3, Q4)
+                  ลากไฟล์มาวางที่นี่ หรือกดเลือกไฟล์
                 </h4>
                 <p className="text-xs text-slate-500 mb-4 max-w-md mx-auto">
-                  คุณสามารถกดเลือกไฟล์ <code>Q1.csv</code>, <code>Q2.csv</code>, <code>Q3.csv</code>, <code>Q4.csv</code> พร้อมกันได้เลย ระบบจะรวมข้อมูลของทุกไตรมาสเข้าด้วยกันให้อัตโนมัติ
+                  รองรับไฟล์ Excel <strong>.xlsx, .xls</strong> (ระบบอ่านครบทุกแท็บชีท Q1-Q4 ให้อัตโนมัติ), รวมถึงไฟล์ <code>.csv</code>, <code>.tsv</code>, <code>.txt</code>, <code>.json</code> พร้อมตรวจจับรหัสภาษาไทย UTF-8 และ Windows-874
                 </p>
                 <label className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs transition-colors">
                   <Plus className="w-4 h-4" />
-                  <span>เลือกหลายไฟล์จากคอมพิวเตอร์</span>
+                  <span>เลือกไฟล์ Excel (.xlsx) หรือ CSV จากเครื่อง</span>
                   <input
                     type="file"
                     multiple
-                    accept=".csv,.tsv,.txt,.json"
+                    accept=".xlsx,.xls,.csv,.tsv,.txt,.json"
                     onChange={handleMultipleFileUpload}
                     className="hidden"
                   />
@@ -582,7 +701,7 @@ export const DataImportExportModal: React.FC<DataImportExportModalProps> = ({
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between bg-slate-50 p-3 rounded-xl">
               <div className="text-xs text-slate-600">
                 <span className="font-semibold text-slate-800">ต้องการกลับไปใช้ชุดข้อมูลมาตรฐาน?</span>
-                <p className="text-[11px] text-slate-500">โหลดชุดข้อมูลตัวอย่างองค์กร 4 ไตรมาส (2,721 ท่าน)</p>
+                <p className="text-[11px] text-slate-500">โหลดชุดข้อมูลมาตรฐานองค์กร 4 ไตรมาส (2,287 ท่าน | รวม 7,075 รายการ)</p>
               </div>
               <button
                 onClick={() => {

@@ -34,7 +34,7 @@ export default function App() {
   const [sheetUrl, setSheetUrl] = useState<string>('');
   const [lastSync, setLastSync] = useState<string | null>(null);
 
-  // Load dataset: First check persisted custom/sheet data in localStorage; if none, fetch default 2,721 personnel dataset
+  // Load dataset: First check persisted custom/sheet data in localStorage; if none, fetch default 2,287 personnel dataset
   useEffect(() => {
     let isMounted = true;
     const persisted = loadPersistedState();
@@ -49,7 +49,7 @@ export default function App() {
       return;
     }
 
-    // Default mode: Load full 2,721 personnel dataset from /dataset.json
+    // Default mode: Load full 2,287 personnel dataset from /dataset.json
     setIsLoadingData(true);
     fetch('/dataset.json')
       .then((res) => {
@@ -154,7 +154,7 @@ export default function App() {
     syncDatasetToFirestore(newRecords, newSheetUrl || sheetUrl);
   };
 
-  // Revert back to default dataset (2,721 personnel)
+  // Revert back to default dataset (2,287 personnel)
   const handleResetToDefault = () => {
     clearCustomState();
     setDataSourceMode('default');
@@ -315,6 +315,7 @@ export default function App() {
             {/* Section 5: Full Personnel Directory Table */}
             <PersonnelTable
               persons={filteredPersons}
+              activeQuarter={filters.selectedQuarter}
               onSelectPerson={handleSelectPerson}
             />
           </div>
@@ -363,7 +364,7 @@ export default function App() {
         summaries={metricSummaries}
         activeQuarter={filters.selectedQuarter}
         totalPersonnel={filteredPersons.length}
-        dataSourceName={dataSourceMode === 'sheet_live' ? 'Google Sheets (Live Sync)' : dataSourceMode === 'custom' ? 'Custom Uploaded Data' : 'ระบบฐานข้อมูลองค์กร (2,721 ท่าน)'}
+        dataSourceName={dataSourceMode === 'sheet_live' ? 'Google Sheets (Live Sync)' : dataSourceMode === 'custom' ? 'Custom Uploaded Data' : 'ระบบฐานข้อมูลองค์กร (2,287 ท่าน)'}
       />
     </div>
   );

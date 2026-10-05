@@ -29,7 +29,7 @@ import { calculateQuarterAverages } from '../data/analytics';
 
 interface ComparativeChartsProps {
   records: BodyCompositionRecord[];
-  activeQuarter: Quarter;
+  activeQuarter: Quarter | 'ALL';
 }
 
 export const ComparativeCharts: React.FC<ComparativeChartsProps> = ({ records, activeQuarter }) => {

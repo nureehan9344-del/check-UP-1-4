@@ -36,7 +36,7 @@ export function getBMIGroupColor(group: BMIGroup): string {
 }
 
 /**
- * Initial fast fallback dataset. Full 2,721 personnel dataset loads asynchronously from /dataset.json
+ * Initial fast fallback dataset. Full 2,287 personnel dataset loads asynchronously from /dataset.json
  */
 export const INITIAL_DATA: {
   records: BodyCompositionRecord[];
@@ -64,6 +64,7 @@ export const INITIAL_DATA: {
       },
       latestQuarter: 'Q4',
       completeness: 'complete',
+      quartersCount: 4,
       fatPercentageChange: -0.9,
       fatPercentageChangePct: -3.09,
       muscleMassChange: -0.4,
@@ -87,6 +88,7 @@ export const INITIAL_DATA: {
       },
       latestQuarter: 'Q4',
       completeness: 'complete',
+      quartersCount: 4,
       fatPercentageChange: -0.4,
       fatPercentageChangePct: -1.32,
       muscleMassChange: 0.1,

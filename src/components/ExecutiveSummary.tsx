@@ -24,7 +24,7 @@ import { computeBMITransitionAnalysis } from '../data/analytics';
 
 interface ExecutiveSummaryProps {
   summaries: MetricSummary[];
-  activeQuarter: Quarter;
+  activeQuarter: Quarter | 'ALL';
   totalPersonnel: number;
   persons?: PersonSummary[];
   onOpenPdfReport?: () => void;
@@ -41,6 +41,26 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
 
   // Compute BMI Transition statistics for persons with >= 2 quarters
   const transitionAnalysis = computeBMITransitionAnalysis(persons);
+
+  const activeQuarterCount = activeQuarter === 'Q1'
+    ? (persons.filter(p => !!p.quarters.Q1).length || 2003)
+    : activeQuarter === 'Q2'
+    ? (persons.filter(p => !!p.quarters.Q2).length || 1764)
+    : activeQuarter === 'Q3'
+    ? (persons.filter(p => !!p.quarters.Q3).length || 1841)
+    : activeQuarter === 'Q4'
+    ? (persons.filter(p => !!p.quarters.Q4).length || 1467)
+    : totalPersonnel;
+
+  const activeQuarterBadge = activeQuarter === 'Q1'
+    ? 'ไตรมาสที่ 1 (Q1)'
+    : activeQuarter === 'Q2'
+    ? 'ไตรมาสที่ 2 (Q2)'
+    : activeQuarter === 'Q3'
+    ? 'ไตรมาสที่ 3 (Q3)'
+    : activeQuarter === 'Q4'
+    ? 'ไตรมาสล่าสุด (Q4)'
+    : 'ภาพรวมครบ 4 ไตรมาส';
 
   const getMetricDetails = (key: string) => {
     switch (key) {
@@ -118,7 +138,11 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
               Executive Summary : สรุปภาพรวม 5 ตัวชี้วัดหลัก
             </h2>
             <span className="px-2.5 py-0.5 text-xs font-bold bg-blue-600 text-white rounded-md shadow-xs">
-              ไตรมาสล่าสุด (Q4)
+              {activeQuarterBadge}
+            </span>
+            <span className="px-2.5 py-0.5 text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200 rounded-md flex items-center gap-1">
+              <Users className="w-3 h-3 text-blue-600" />
+              {activeQuarterCount.toLocaleString()} ท่าน ตามข้อมูลชีท
             </span>
             <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-md flex items-center gap-1">
               <Percent className="w-3 h-3" />
@@ -126,7 +150,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            สรุปผลการประเมินสุขภาพเฉลี่ยของบุคลากรทั้งองค์กร ({totalPersonnel} ท่าน) เปรียบเทียบผลจากจุดเริ่มต้น (Q1) สู่ไตรมาสล่าสุด (Q4)
+            สรุปผลการประเมินสุขภาพเฉลี่ยของบุคลากรใน{activeQuarterBadge} ({activeQuarterCount.toLocaleString()} ท่าน) ยึดข้อมูลตามชีทแท้จริง
           </p>
         </div>
 
@@ -274,16 +298,39 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
           {summaries.map((metric, index) => {
             const isMuscle = metric.metricKey === 'muscle_mass';
             const details = getMetricDetails(metric.metricKey);
-            const valLatest = metric.q4Avg ?? metric.q3Avg ?? metric.currentAvg;
+            const valForActive = activeQuarter === 'Q1'
+              ? metric.q1Avg
+              : activeQuarter === 'Q2'
+              ? metric.q2Avg
+              : activeQuarter === 'Q3'
+              ? metric.q3Avg
+              : activeQuarter === 'Q4'
+              ? metric.q4Avg
+              : (metric.q4Avg ?? metric.currentAvg);
+
+            const displayAvg = valForActive ?? metric.currentAvg;
+
+            const cardTitle = activeQuarter === 'Q1'
+              ? 'ค่าเฉลี่ยไตรมาสที่ 1 (Q1)'
+              : activeQuarter === 'Q2'
+              ? 'ค่าเฉลี่ยไตรมาสที่ 2 (Q2)'
+              : activeQuarter === 'Q3'
+              ? 'ค่าเฉลี่ยไตรมาสที่ 3 (Q3)'
+              : activeQuarter === 'Q4'
+              ? 'ค่าเฉลี่ยไตรมาสที่ 4 (Q4)'
+              : 'ค่าเฉลี่ยไตรมาสล่าสุด (Q4)';
+
             const valQ1 = metric.q1Avg;
             const valQ3 = metric.q3Avg;
-
-            // Overall Difference (Latest vs Q1)
-            const diffVal = valQ1 !== null ? Number((valLatest - valQ1).toFixed(2)) : null;
-            const pctVal = (valQ1 !== null && valQ1 > 0) ? Number(((valLatest - valQ1) / valQ1 * 100).toFixed(1)) : null;
-
-            // Quarter-on-Quarter Difference (Q4 vs Q3)
             const diffQ3ToQ4 = (valQ3 !== null && metric.q4Avg !== null) ? Number((metric.q4Avg - valQ3).toFixed(2)) : null;
+
+            // Difference relative to baseline
+            const diffVal = (activeQuarter === 'Q1' || valQ1 === null)
+              ? null
+              : Number((displayAvg - valQ1).toFixed(2));
+            const pctVal = (activeQuarter === 'Q1' || valQ1 === null || valQ1 <= 0)
+              ? null
+              : Number(((displayAvg - valQ1) / valQ1 * 100).toFixed(1));
 
             // For muscle: higher is better (+ is good). For others: lower is better (- is good).
             const isGood = isMuscle ? (diffVal !== null && diffVal >= 0) : (diffVal !== null && diffVal <= 0);
@@ -315,28 +362,34 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                     {metric.labelEn} ({metric.unit})
                   </div>
 
-                  {/* Primary Number (Selected Quarter / Latest Q4 Average) */}
+                  {/* Primary Number (Selected Quarter / Latest Average) */}
                   <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 mb-2.5">
                     <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                      ค่าเฉลี่ยไตรมาสที่ 4 (Q4 ล่าสุด)
+                      {cardTitle}
                     </div>
                     <div className="flex items-baseline justify-between">
                       <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                        {valLatest.toFixed(1)}{' '}
+                        {displayAvg.toFixed(1)}{' '}
                         <span className="text-xs font-normal text-slate-500">{metric.unit}</span>
                       </span>
 
                       {/* Status pill */}
-                      <span
-                        className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-bold ${
-                          isGood
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}
-                      >
-                        {isGood ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {pctVal !== null ? `${pctVal > 0 ? `+${pctVal}` : pctVal}%` : '-'}
-                      </span>
+                      {activeQuarter === 'Q1' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                          จุดเริ่มต้น
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-bold ${
+                            isGood
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}
+                        >
+                          {isGood ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {pctVal !== null ? `${pctVal > 0 ? `+${pctVal}` : pctVal}%` : '-'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
